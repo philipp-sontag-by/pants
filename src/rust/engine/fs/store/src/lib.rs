@@ -58,8 +58,6 @@ use fs::{
 };
 use futures::future::{self, BoxFuture, Either, FutureExt, TryFutureExt};
 use grpc_util::prost::MessageExt;
-use grpc_util::retry::{retry_call, status_is_retryable};
-use grpc_util::status_to_str;
 use hashing::Digest;
 use parking_lot::Mutex;
 use prost::Message;
@@ -70,8 +68,6 @@ use serde_derive::Serialize;
 use sharded_lmdb::DEFAULT_LEASE_TIME;
 use tryfuture::try_future;
 use workunit_store::{in_workunit, Level, Metric};
-
-use crate::remote::ByteStoreError;
 
 const KILOBYTES: usize = 1024;
 const MEGABYTES: usize = 1024 * KILOBYTES;
@@ -254,23 +250,7 @@ impl RemoteStore {
     let remote_store = self.store.clone();
     self
       .maybe_download(digest, async move {
-        // TODO(#17065): Now that we always copy from the remote store to the local store before
-        // executing the caller's logic against the local store,
-        // `remote::ByteStore::load_bytes_with` no longer needs to accept a function.
-        let bytes = retry_call(
-          remote_store,
-          |remote_store| async move { remote_store.load_bytes_with(digest, Ok).await },
-          |err| match err {
-            ByteStoreError::Grpc(status) => status_is_retryable(status),
-            _ => false,
-          },
-        )
-        .await
-        .map_err(|err| match err {
-          ByteStoreError::Grpc(status) => status_to_str(status),
-          ByteStoreError::Other(msg) => msg,
-        })?
-        .ok_or_else(|| {
+        let bytes = remote_store.load_bytes(digest).await?.ok_or_else(|| {
           StoreError::MissingDigest(
             "Was not present in either the local or remote store".to_owned(),
             digest,
@@ -285,8 +265,7 @@ impl RemoteStore {
           Ok(())
         } else {
           Err(StoreError::Unclassified(format!(
-            "CAS gave wrong digest: expected {:?}, got {:?}",
-            digest, stored_digest
+            "CAS gave wrong digest: expected {digest:?}, got {stored_digest:?}"
           )))
         }
       })
@@ -699,10 +678,7 @@ impl Store {
         // and only verify in debug mode, as it's slightly expensive.
         move |bytes: &[u8]| {
           let directory = remexec::Directory::decode(bytes).map_err(|e| {
-            format!(
-              "LMDB corruption: Directory bytes for {:?} were not valid: {:?}",
-              digest, e
-            )
+            format!("LMDB corruption: Directory bytes for {digest:?} were not valid: {e:?}")
           })?;
           if cfg!(debug_assertions) {
             protos::verify_directory_canonical(digest, &directory)?;
@@ -713,10 +689,7 @@ impl Store {
         // into our local store.
         move |bytes: Bytes| {
           let directory = remexec::Directory::decode(bytes).map_err(|e| {
-            format!(
-              "CAS returned Directory proto for {:?} which was not valid: {:?}",
-              digest, e
-            )
+            format!("CAS returned Directory proto for {digest:?} which was not valid: {e:?}")
           })?;
           protos::verify_directory_canonical(digest, &directory)?;
           Ok(())
@@ -896,10 +869,7 @@ impl Store {
     match maybe_bytes {
       Some(bytes) => Ok(remote.store_bytes(bytes).await?),
       None => Err(StoreError::MissingDigest(
-        format!(
-          "Failed to upload {entry_type:?}: Not found in local store",
-          entry_type = entry_type,
-        ),
+        format!("Failed to upload {entry_type:?}: Not found in local store",),
         digest,
       )),
     }
@@ -916,21 +886,13 @@ impl Store {
         let result = local
           .load_bytes_with(entry_type, digest, move |bytes| {
             buffer.write_all(bytes).map_err(|e| {
-              format!(
-                "Failed to write {entry_type:?} {digest:?} to temporary buffer: {err}",
-                entry_type = entry_type,
-                digest = digest,
-                err = e
-              )
+              format!("Failed to write {entry_type:?} {digest:?} to temporary buffer: {e}")
             })
           })
           .await?;
         match result {
           None => Err(StoreError::MissingDigest(
-            format!(
-              "Failed to upload {entry_type:?}: Not found in local store",
-              entry_type = entry_type,
-            ),
+            format!("Failed to upload {entry_type:?}: Not found in local store",),
             digest,
           )),
           Some(Err(err)) => Err(err.into()),
@@ -1076,35 +1038,14 @@ impl Store {
       return Err("Cannot load Trees from a remote without a remote".to_owned());
     };
 
-    let tree_opt = retry_call(
-      remote,
-      |remote| async move {
-        remote
-          .store
-          .load_bytes_with(tree_digest, |b| {
-            let tree = Tree::decode(b).map_err(|e| format!("protobuf decode error: {:?}", e))?;
-            Ok(tree)
-          })
-          .await
-      },
-      |err| match err {
-        ByteStoreError::Grpc(status) => status_is_retryable(status),
-        _ => false,
-      },
-    )
-    .await
-    .map_err(|err| match err {
-      ByteStoreError::Grpc(status) => status_to_str(status),
-      ByteStoreError::Other(msg) => msg,
-    })?;
-
-    let tree = match tree_opt {
-      Some(t) => t,
-      None => return Ok(None),
-    };
-
-    let trie = DigestTrie::try_from(tree)?;
-    Ok(Some(trie.into()))
+    match remote.store.load_bytes(tree_digest).await? {
+      Some(b) => {
+        let tree = Tree::decode(b).map_err(|e| format!("protobuf decode error: {e:?}"))?;
+        let trie = DigestTrie::try_from(tree)?;
+        Ok(Some(trie.into()))
+      }
+      None => Ok(None),
+    }
   }
 
   pub async fn lease_all_recursively<'a, Ds: Iterator<Item = &'a Digest>>(
@@ -1141,7 +1082,7 @@ impl Store {
         }
         Ok(())
       }
-      Err(err) => Err(format!("Garbage collection failed: {:?}", err)),
+      Err(err) => Err(format!("Garbage collection failed: {err:?}")),
     }
   }
 
@@ -1492,7 +1433,7 @@ impl Store {
         let content = store
           .load_file_bytes_with(digest, Bytes::copy_from_slice)
           .await
-          .map_err(|e| e.enrich(&format!("Couldn't find file contents for {:?}", path)))?;
+          .map_err(|e| e.enrich(&format!("Couldn't find file contents for {path:?}")))?;
         Ok(FileContent {
           path,
           content,

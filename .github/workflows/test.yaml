@@ -36,7 +36,7 @@ jobs:
       uses: actions/cache@v3
       with:
         key: Linux-ARM64-rustup-${{ hashFiles('rust-toolchain') }}-v2
-        path: '~/.rustup/toolchains/1.66.1-*
+        path: '~/.rustup/toolchains/1.67.0-*
 
           ~/.rustup/update-hashes
 
@@ -139,7 +139,7 @@ jobs:
       uses: actions/cache@v3
       with:
         key: Linux-x86_64-rustup-${{ hashFiles('rust-toolchain') }}-v2
-        path: '~/.rustup/toolchains/1.66.1-*
+        path: '~/.rustup/toolchains/1.67.0-*
 
           ~/.rustup/update-hashes
 
@@ -256,7 +256,7 @@ jobs:
       uses: actions/cache@v3
       with:
         key: macOS11-x86_64-rustup-${{ hashFiles('rust-toolchain') }}-v2
-        path: '~/.rustup/toolchains/1.66.1-*
+        path: '~/.rustup/toolchains/1.67.0-*
 
           ~/.rustup/update-hashes
 
@@ -375,16 +375,14 @@ jobs:
     - env:
         PANTS_CONFIG_FILES: +['pants.ci.toml','pants.ci.aarch64.toml']
       name: Build wheels
-      run: '[[ "${GITHUB_EVENT_NAME}" == "pull_request" ]] && export MODE=debug
+      run: 'USE_PY39=true ./build-support/bin/release.sh build-local-pex
 
-        USE_PY39=true ./build-support/bin/release.sh build-local-pex
 
+        USE_PY39=true ./build-support/bin/release.sh build-wheels
 
         ./build-support/bin/release.sh build-wheels
 
-        USE_PY38=true ./build-support/bin/release.sh build-wheels
-
-        USE_PY39=true ./build-support/bin/release.sh build-wheels'
+        USE_PY38=true ./build-support/bin/release.sh build-wheels'
     - continue-on-error: true
       if: always()
       name: Upload pants.log
@@ -443,19 +441,17 @@ jobs:
     - name: Install Go
       uses: actions/setup-go@v3
       with:
-        go-version: 1.17.1
+        go-version: 1.19.5
     - env: {}
       name: Build wheels
-      run: '[[ "${GITHUB_EVENT_NAME}" == "pull_request" ]] && export MODE=debug
+      run: 'USE_PY39=true ./build-support/bin/release.sh build-local-pex
 
-        USE_PY39=true ./build-support/bin/release.sh build-local-pex
 
+        USE_PY39=true ./build-support/bin/release.sh build-wheels
 
         ./build-support/bin/release.sh build-wheels
 
-        USE_PY38=true ./build-support/bin/release.sh build-wheels
-
-        USE_PY39=true ./build-support/bin/release.sh build-wheels'
+        USE_PY38=true ./build-support/bin/release.sh build-wheels'
     - continue-on-error: true
       if: always()
       name: Upload pants.log
@@ -492,7 +488,7 @@ jobs:
       uses: actions/cache@v3
       with:
         key: macOS10-15-x86_64-rustup-${{ hashFiles('rust-toolchain') }}-v2
-        path: '~/.rustup/toolchains/1.66.1-*
+        path: '~/.rustup/toolchains/1.67.0-*
 
           ~/.rustup/update-hashes
 
@@ -513,20 +509,18 @@ jobs:
     - name: Install Go
       uses: actions/setup-go@v3
       with:
-        go-version: 1.17.1
+        go-version: 1.19.5
     - env:
         ARCHFLAGS: -arch x86_64
       name: Build wheels
-      run: '[[ "${GITHUB_EVENT_NAME}" == "pull_request" ]] && export MODE=debug
+      run: 'USE_PY39=true ./build-support/bin/release.sh build-local-pex
 
-        USE_PY39=true ./build-support/bin/release.sh build-local-pex
 
+        USE_PY39=true ./build-support/bin/release.sh build-wheels
 
         ./build-support/bin/release.sh build-wheels
 
-        USE_PY38=true ./build-support/bin/release.sh build-wheels
-
-        USE_PY39=true ./build-support/bin/release.sh build-wheels'
+        USE_PY38=true ./build-support/bin/release.sh build-wheels'
     - continue-on-error: true
       if: always()
       name: Upload pants.log
@@ -563,7 +557,7 @@ jobs:
       uses: actions/cache@v3
       with:
         key: macOS11-ARM64-rustup-${{ hashFiles('rust-toolchain') }}-v2
-        path: '~/.rustup/toolchains/1.66.1-*
+        path: '~/.rustup/toolchains/1.67.0-*
 
           ~/.rustup/update-hashes
 
@@ -584,13 +578,11 @@ jobs:
     - name: Install Go
       uses: actions/setup-go@v3
       with:
-        go-version: 1.17.1
+        go-version: 1.19.5
     - env:
         ARCHFLAGS: -arch arm64
       name: Build wheels
-      run: '[[ "${GITHUB_EVENT_NAME}" == "pull_request" ]] && export MODE=debug
-
-        USE_PY39=true ./build-support/bin/release.sh build-local-pex
+      run: 'USE_PY39=true ./build-support/bin/release.sh build-local-pex
 
 
         USE_PY39=true ./build-support/bin/release.sh build-wheels'
@@ -821,7 +813,7 @@ jobs:
     - name: Install Go
       uses: actions/setup-go@v3
       with:
-        go-version: 1.17.1
+        go-version: 1.19.5
     - if: runner.os == 'Linux'
       name: Download Apache `thrift` binary (Linux)
       run: 'mkdir -p "${HOME}/.thrift"
@@ -895,7 +887,7 @@ jobs:
     - name: Install Go
       uses: actions/setup-go@v3
       with:
-        go-version: 1.17.1
+        go-version: 1.19.5
     - if: runner.os == 'Linux'
       name: Download Apache `thrift` binary (Linux)
       run: 'mkdir -p "${HOME}/.thrift"
@@ -969,7 +961,7 @@ jobs:
     - name: Install Go
       uses: actions/setup-go@v3
       with:
-        go-version: 1.17.1
+        go-version: 1.19.5
     - if: runner.os == 'Linux'
       name: Download Apache `thrift` binary (Linux)
       run: 'mkdir -p "${HOME}/.thrift"
